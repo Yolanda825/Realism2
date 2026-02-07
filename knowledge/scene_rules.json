@@ -1,0 +1,110 @@
+{
+  "portrait": {
+    "scene_rules": [
+      "Skin should have subtle texture variations and pores",
+      "Hair strands should show natural irregularity",
+      "Eyes should have slight asymmetry",
+      "Lighting should have natural falloff with soft shadows",
+      "Background blur should follow optical physics (bokeh)",
+      "Skin tone should vary across different facial regions"
+    ],
+    "avoid_patterns": [
+      "Perfectly smooth skin without pores",
+      "Symmetrical facial features",
+      "Uniform lighting across all surfaces",
+      "Over-sharpened edges around hair",
+      "Plastic-like skin reflections",
+      "Unnaturally white teeth or eyes"
+    ]
+  },
+  "landscape": {
+    "scene_rules": [
+      "Sky gradients should be subtle and natural",
+      "Foliage should have random leaf distribution",
+      "Water reflections should have slight distortion",
+      "Distant objects should have atmospheric haze",
+      "Shadows should follow consistent light direction",
+      "Textures should degrade with distance"
+    ],
+    "avoid_patterns": [
+      "Perfectly repeating patterns in nature",
+      "Over-saturated colors",
+      "Uniform sky without gradient variation",
+      "Perfectly straight horizon lines",
+      "Identical trees or plants",
+      "Missing atmospheric perspective"
+    ]
+  },
+  "interior": {
+    "scene_rules": [
+      "Multiple light sources create complex shadows",
+      "Surfaces should show wear and use patterns",
+      "Reflections should account for multiple surfaces",
+      "Wood grain and fabric textures should be irregular",
+      "Perspective lines should converge naturally",
+      "Color temperature varies by light source"
+    ],
+    "avoid_patterns": [
+      "Perfectly clean surfaces",
+      "Single uniform light source",
+      "Repetitive textures without variation",
+      "Perfect geometric alignment",
+      "Missing reflections on glossy surfaces",
+      "Uniform color temperature throughout"
+    ]
+  },
+  "product": {
+    "scene_rules": [
+      "Surface reflections should match environment",
+      "Materials should have appropriate specularity",
+      "Edges should have subtle imperfections",
+      "Shadows should be soft with proper penumbra",
+      "Labels and text should follow surface curvature",
+      "Background should have subtle gradient or texture"
+    ],
+    "avoid_patterns": [
+      "Floating products without proper grounding",
+      "Missing contact shadows",
+      "Over-perfect surface finish",
+      "Unrealistic material reflections",
+      "Perfectly sharp edges throughout",
+      "Pure white or gradient backgrounds without context"
+    ]
+  },
+  "street": {
+    "scene_rules": [
+      "Pavement should show wear and staining",
+      "Buildings should have weathering patterns",
+      "People and vehicles should have motion context",
+      "Signage should show age and environmental effects",
+      "Lighting should reflect time of day accurately",
+      "Reflections on wet surfaces should be complex"
+    ],
+    "avoid_patterns": [
+      "Perfectly clean streets",
+      "Identical windows or architectural elements",
+      "People frozen in unnatural poses",
+      "Missing environmental context",
+      "Over-sharp details at all distances",
+      "Uniform building materials"
+    ]
+  },
+  "default": {
+    "scene_rules": [
+      "Lighting should have natural falloff",
+      "Textures should have micro-variations",
+      "Edges should not be uniformly sharp",
+      "Colors should have subtle variations",
+      "Shadows should be consistent with light sources",
+      "Reflections should match the environment"
+    ],
+    "avoid_patterns": [
+      "Over-uniform textures",
+      "Excessive symmetry",
+      "Unnaturally clean surfaces",
+      "Perfect geometric shapes in natural objects",
+      "Missing shadows or incorrect shadow direction",
+      "Over-saturated or HDR-like colors"
+    ]
+  }
+}

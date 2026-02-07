@@ -1,0 +1,145 @@
+接口名称：google nano 改图/文生图 异步任务提交创 建 人：李程俊
+状  态：已完成完成自动化：未完成
+更新时间：2025-11-28 16:28:25
+接口路径：POST/outsourcing/gateway/async/submit_9_1745388801592_1750905015776_1756272242154
+Mock地址：https://api-mock.meitu-int.com/mock/1897/outsourcing/gateway/async/submit_9_1745388801592_1750905015776_1756272242154
+备注
+测试
+      添加任务（post请求）：http://openapi-pre.mtlab.meitu.com/test/outsourcing_gateway_submit_async?api_key={api_key}&api_secret={api_secret}
+      轮训结果（post请求）：https://openapi-pre.mtlab.meitu.com/test/query?api_key={api_key}&api_secret={api_secret}
+线上：
+     添加任务（post请求）： https://openapi.mtlab.meitu.com/v1/outsourcing_gateway_submit_async?api_key={api_key}&api_secret={api_secret}
+     轮训结果（post请求）：https://openapi.mtlab.meitu.com/v1/query?api_key={api_key}&api_secret={api_secret}
+
+nano 文档：https://ai.google.dev/gemini-api/docs/image-generation?hl=zh-cn#python
+
+
+
+11.20更新：
+nano2 model需要传入gemini-3-pro-image-preview
+nano2 支持参数resolution 1K 2K 4K 三个值
+
+注：
+如果不传图片默认文生图
+
+外采平台所有接口只有两个域名：
+测试域名：http://async-gateway-beta.deepnet.cloud.m.com
+线上域名：http://async-gateway.deepnet.cloud.m.com
+
+
+
+根据path不同区分不同类型请求（同步请求/异步提交/异步查询）
+同步请求: /outsourcing/gatewa/sync/request
+异步提交: /outsourcing/gatewa/async/submit
+异步查询: /outsourcing/gatewa/async/query
+
+请求参数
+Headers：
+参数名称	参数值	是否必须	示例	备注
+Content-Type	application/json	是	
+Body:
+名称	类型	是否必须	默认值	备注	其他信息
+media_info_list	object []	
+必须
+支持多图	
+最小数量: 1
+
+最大数量: 3
+
+item 类型: object
+
+media_data	string	
+必须
+图片url 	
+mock: https://sn-ai-flow.obs.cn-north-4.myhuaweicloud.com/aiflow-server-pre/request-resources/batch-429/18dc0aca-85cd-4f68-8c01-6cb4110abfa3.jpg
+
+parameter	object	
+必须
+token	string	
+必须
+权限Token(联系元建获取)	
+mock: 权限Token,跟元健申请
+
+trace_id	string	
+必须
+请求级唯一id	
+mock: 123ABC
+
+app_scene	string	
+必须
+本接口写死为go	
+mock: go
+
+path_scene	string	
+必须
+本接口写死为imgEdit	
+mock: imgEdit
+
+prompt	string	
+必须
+描述词	
+model	string	
+必须
+nano:  gemini-2.5-flash-image-preview
+nano2: gemini-3-pro-image-preview	
+mock: gemini-2.5-flash-image-preview
+
+aspect_ratio	string	
+非必须
+1:1 2:3 3:2 3:4 4:3 4:5 5:4 9:16 16:9 21:9	
+mock: ""
+
+temperature	number	
+非必须
+0-1 默认1	
+resolution	string	
+非必须
+只有nano2才可以传这个参数
+1K 2K 4K 	
+is_translate	boolean	
+非必须
+是否加翻译 默认为true	
+output_format	string	
+非必须
+possible enum values: jpeg, png ,webp 默认png	
+platform	string	
+非必须
+平台	
+mock: ios
+
+gid	string	
+非必须
+mock: 123
+
+uid	string	
+非必须
+mock: 123
+
+area_code	string	
+非必须
+mock: CN
+
+lang	string	
+非必须
+mock: zh-Hans
+
+version	string	
+非必须
+mock: 10.0.0
+
+repost_url	string	
+非必须
+回调接口，只支持post json，此字段如果非空，则平台取到结果后会回调此接口	
+mock: @string("")
+
+返回数据
+名称	类型	是否必须	默认值	备注	其他信息
+error_code	number	
+非必须
+错误码，非0为异常	
+error_msg	string	
+非必须
+错误消息，用于调试	
+msg_id	string	
+非必须
+异步任务id	
