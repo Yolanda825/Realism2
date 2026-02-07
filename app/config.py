@@ -19,13 +19,11 @@ class Settings(BaseSettings):
     image_model_endpoint: str = ""
 
     # MHC Image-to-Image API Configuration (test_minimal 方式: runAsync + queryResult)
-    mhc_app: str = "mhc"
-    mhc_biz: str = "mhc_proj_xxx"
-    mhc_region: str = "pre-meitu"
+    mhc_app: str = ""
+    mhc_biz: str = ""
+    mhc_region: str = ""
     mhc_env: str = "outer"
     mhc_api_path: str = "v1/outsourcing_gateway_submit_async"
-    # 外采改图/生图权限 Token（联系元建获取），parameter.token 必填
-    mhc_nano_token: str = ""
 
     # Application Settings
     max_image_size: int = 10485760  # 10MB

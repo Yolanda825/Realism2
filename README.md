@@ -76,12 +76,12 @@ LLM_MODEL=qwen-turbo
 LLM_VISION_MODEL=qwen-vl-plus
 
 # MHC 生图/改图（与 test_minimal 方式一致：runAsync + queryResult）
-MHC_APP=mhc
-MHC_BIZ=mhc_proj_1076_64b9
-MHC_REGION=starii
-MHC_ENV=outer
-MHC_API_PATH=v1/outsourcing_gateway_submit_async
-MHC_NANO_TOKEN=your_nano_token_here   # 外采改图权限 Token，联系元建获取
+MHC_APP=
+MHC_BIZ=
+MHC_REGION=
+MHC_ENV=
+MHC_API_PATH=
+
 
 # Application Settings
 MAX_IMAGE_SIZE=10485760
