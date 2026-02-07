@@ -8,7 +8,17 @@ from app.models.schemas import (
     RealismScore,
     Severity,
     Priority,
+    AIConfidenceLevel,
 )
+
+
+AI_LEVEL_DESCRIPTIONS = {
+    AIConfidenceLevel.VERY_LOW: "几乎无AI痕迹，图像非常真实",
+    AIConfidenceLevel.LOW: "轻微AI痕迹，图像较为真实",
+    AIConfidenceLevel.MEDIUM: "中等AI痕迹，图像有一定AI特征",
+    AIConfidenceLevel.HIGH: "明显AI痕迹，图像AI特征较明显",
+    AIConfidenceLevel.VERY_HIGH: "严重AI痕迹，图像明显为AI生成",
+}
 
 
 class RealismScorer:
@@ -26,10 +36,7 @@ class RealismScorer:
         execution_plan: ExecutionPlan,
     ) -> RealismScore:
         """
-        Estimate realism scores.
-
-        This is a heuristic-based scorer that estimates improvement
-        based on the analysis and planned enhancements.
+        Estimate realism scores with AI confidence level.
 
         Args:
             scene_classification: Scene classification results
@@ -38,32 +45,30 @@ class RealismScorer:
             execution_plan: The execution plan
 
         Returns:
-            RealismScore with before/after estimates and confidence
+            RealismScore with before/after estimates, AI level, and confidence
         """
-        # Calculate "before" score based on AI likelihood and fake signals
         before_score = self._calculate_before_score(
             scene_classification.ai_likelihood,
             fake_signals
         )
 
-        # Calculate expected improvement based on strategy and plan
         improvement = self._calculate_improvement(
             fake_signals,
             strategy,
             execution_plan
         )
 
-        # Calculate "after" score
         after_score = min(1.0, before_score + improvement)
 
-        # Calculate confidence based on analysis quality
         confidence = self._calculate_confidence(
             scene_classification,
             fake_signals,
             strategy
         )
 
-        # Generate notes
+        ai_level = self._calculate_ai_level(after_score)
+        level_description = AI_LEVEL_DESCRIPTIONS.get(ai_level, "")
+
         notes = self._generate_notes(
             before_score,
             after_score,
@@ -74,9 +79,44 @@ class RealismScorer:
         return RealismScore(
             before=round(before_score, 3),
             after=round(after_score, 3),
+            ai_score_level=ai_level,
+            ai_score_level_description=level_description,
             confidence=round(confidence, 3),
             notes=notes,
         )
+
+    def should_continue_iteration(self, ai_level: AIConfidenceLevel) -> bool:
+        """
+        Determine if another iteration should be performed.
+
+        Args:
+            ai_level: The current AI confidence level
+
+        Returns:
+            True if should continue (level is high or very_high), False otherwise
+        """
+        return ai_level in [AIConfidenceLevel.HIGH, AIConfidenceLevel.VERY_HIGH]
+
+    def _calculate_ai_level(self, realism_score: float) -> AIConfidenceLevel:
+        """
+        Convert realism score to AI confidence level.
+
+        Args:
+            realism_score: Realism score (0-1, higher is more realistic)
+
+        Returns:
+            Corresponding AI confidence level
+        """
+        if realism_score >= 0.85:
+            return AIConfidenceLevel.VERY_LOW
+        elif realism_score >= 0.65:
+            return AIConfidenceLevel.LOW
+        elif realism_score >= 0.45:
+            return AIConfidenceLevel.MEDIUM
+        elif realism_score >= 0.25:
+            return AIConfidenceLevel.HIGH
+        else:
+            return AIConfidenceLevel.VERY_HIGH
 
     def _calculate_before_score(
         self,

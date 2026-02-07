@@ -68,13 +68,25 @@ async def web_ui():
       .image-box img { max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid #e5e7eb; }
       .image-label { font-size: 14px; color: #666; margin-bottom: 8px; }
       
-      .tag { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; margin: 2px; }
-      .tag-scene { background: #dbeafe; color: #1e40af; }
-      .tag-attr { background: #f3e8ff; color: #6b21a8; }
-      .tag-high { background: #fee2e2; color: #991b1b; }
-      .tag-medium { background: #fef3c7; color: #92400e; }
-      .tag-low { background: #d1fae5; color: #065f46; }
-      .tag-agent { background: #e0e7ff; color: #3730a3; font-weight: 500; }
+       .tag { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; margin: 2px; }
+       .tag-scene { background: #dbeafe; color: #1e40af; }
+       .tag-attr { background: #f3e8ff; color: #6b21a8; }
+       .tag-high { background: #fee2e2; color: #991b1b; }
+       .tag-medium { background: #fef3c7; color: #92400e; }
+       .tag-low { background: #d1fae5; color: #065f46; }
+       .tag-agent { background: #e0e7ff; color: #3730a3; font-weight: 500; }
+       .tag-dimension { background: #e0f2fe; color: #0369a1; }
+       
+       .ai-level { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-weight: 600; }
+       .ai-level.very_low { background: #dcfce7; color: #166534; }
+       .ai-level.low { background: #d1fae5; color: #065f46; }
+       .ai-level.medium { background: #fef3c7; color: #92400e; }
+       .ai-level.high { background: #fed7aa; color: #9a3412; }
+       .ai-level.very_high { background: #fee2e2; color: #991b1b; }
+       
+       .dimension-section { margin-bottom: 16px; }
+       .dimension-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+       .dimension-title .dim-icon { font-size: 16px; }
       
       .signal-item { padding: 8px 12px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
       .signal-severity { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -276,14 +288,40 @@ async def web_ui():
         'expression': '表情专家'
       };
       
-      const EXPRESSION_TYPES = {
-        'neutral': '中性',
-        'big_laugh': '大笑',
-        'crying': '大哭',
-        'surprise': '惊讶',
-        'anger': '愤怒',
-        'other': '其他'
-      };
+       const EXPRESSION_TYPES = {
+         'neutral': '中性',
+         'big_laugh': '大笑',
+         'crying': '大哭',
+         'surprise': '惊讶',
+         'anger': '愤怒',
+         'other': '其他'
+       };
+       
+       const AI_LEVEL_NAMES = {
+         'very_low': '极低',
+         'low': '较低',
+         'medium': '中等',
+         'high': '较高',
+         'very_high': '极高'
+       };
+       
+       const DIMENSION_NAMES = {
+         'skin': '皮肤',
+         'lighting': '光线',
+         'texture': '纹理',
+         'geometry': '几何/表情',
+         'color': '色彩',
+         'general': '通用'
+       };
+       
+       const DIMENSION_ICONS = {
+         'skin': '👤',
+         'lighting': '💡',
+         'texture': '🧱',
+         'geometry': '📐',
+         'color': '🎨',
+         'general': '📋'
+       };
       
       // Drag and drop
       dropzone.addEventListener('click', () => fileInput.click());
@@ -365,179 +403,172 @@ async def web_ui():
         const sc = data.scene_classification;
         document.getElementById('sceneType').textContent = sc.primary_scene;
         document.getElementById('sceneAttrs').innerHTML = sc.secondary_attributes.map(a => `<span class="tag tag-attr">${a}</span>`).join('');
-        document.getElementById('initialLikelihood').textContent = `${(sc.ai_likelihood * 100).toFixed(0)}%`;
         
-        // Fake signals
+        // AI Level display
+        const aiLevel = data.realism_score?.ai_score_level || 'unknown';
+        const aiLevelName = AI_LEVEL_NAMES[aiLevel] || aiLevel;
+        document.getElementById('initialLikelihood').innerHTML = `
+          <span class="ai-level ${aiLevel}">${aiLevelName}</span>
+        `;
+        
+        // Dimension signals
         const fakeSignalsDiv = document.getElementById('fakeSignals');
-        if (data.fake_signals && data.fake_signals.length) {
-          fakeSignalsDiv.innerHTML = data.fake_signals.map(s => `
+        const dimSignals = data.dimension_signals || {};
+        
+        let dimensionHtml = '';
+        const dimensions = ['skin', 'lighting', 'texture', 'geometry', 'color', 'general'];
+        let hasAnySignals = false;
+        
+        dimensions.forEach(dim => {
+          const signals = dimSignals[dim] || [];
+          if (signals && signals.length > 0) {
+            hasAnySignals = true;
+            dimensionHtml += `
+              <div class="dimension-section">
+                <div class="dimension-title">
+                  <span class="dim-icon">${DIMENSION_ICONS[dim] || '📋'}</span>
+                  ${DIMENSION_NAMES[dim] || dim}
+                  <span class="tag tag-dimension">${signals.length}个问题</span>
+                </div>
+                ${signals.map(s => `
+                  <div class="signal-item">
+                    <div class="signal-severity ${s.severity}"></div>
+                    <span>${s.signal}</span>
+                    <span class="tag tag-${s.severity}" style="margin-left: auto;">${s.severity}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+        });
+        
+        // Also show flat fake_signals list if dimension_signals is empty
+        if (!hasAnySignals && data.fake_signals && data.fake_signals.length > 0) {
+          dimensionHtml = data.fake_signals.map(s => `
             <div class="signal-item">
               <div class="signal-severity ${s.severity}"></div>
               <span>${s.signal}</span>
               <span class="tag tag-${s.severity}" style="margin-left: auto;">${s.severity}</span>
             </div>
           `).join('');
-        } else {
-          fakeSignalsDiv.innerHTML = '<div style="color: #666;">未检测到明显的AI痕迹</div>';
+        } else if (!hasAnySignals) {
+          dimensionHtml = '<div style="color: #666;">未检测到明显的AI痕迹</div>';
         }
         
-        // Expert enhancement results
-        const expertCard = document.getElementById('iterationsCard');
-        const summaryCard = document.getElementById('summaryCard');
-        const enhancedBox = document.getElementById('enhancedBox');
+        fakeSignalsDiv.innerHTML = dimensionHtml;
         
-        if (data.expert_enhancement && showEnhanced) {
-          const ee = data.expert_enhancement;
-          
-          // Summary with expression info
+        // Enhanced image and final AI level
+        const enhancedBox = document.getElementById('enhancedBox');
+        const summaryCard = document.getElementById('summaryCard');
+        const expertCard = document.getElementById('iterationsCard');
+        
+        // Check if we have enhancement_result from simplified flow
+        const enhancementResult = data.enhancement_result;
+        const expertEnhancement = data.expert_enhancement;
+        
+        if (enhancementResult && showEnhanced && enhancementResult.success) {
+          // Simplified flow result
           summaryCard.classList.remove('hidden');
-          let summaryHtml = ee.summary;
-          if (ee.expression_type && ee.expression_type !== 'neutral') {
-            const expType = EXPRESSION_TYPES[ee.expression_type] || ee.expression_type;
-            const expMode = ee.expression_mode === 'preserve' ? '保留' : '修正';
-            summaryHtml += ` <span class="expression-badge ${ee.expression_mode}">${expType}(${expMode})</span>`;
-          }
-          if (ee.expression_issues && ee.expression_issues.length > 0) {
-            summaryHtml += `<div class="expression-issues" style="margin-top: 8px;"><strong>检测到的表情问题：</strong><ul style="margin: 4px 0 0 16px;">${ee.expression_issues.map(i => `<li>${i}</li>`).join('')}</ul></div>`;
-          }
-          document.getElementById('summaryText').innerHTML = summaryHtml;
+          enhancedBox.classList.remove('hidden');
           
-          // Final likelihood
-          document.getElementById('finalLikelihood').textContent = `${(ee.final_ai_likelihood * 100).toFixed(0)}%`;
-          
-          // Enhanced image
-          if (ee.enhanced_image_base64) {
-            enhancedBox.classList.remove('hidden');
-            let imgData = ee.enhanced_image_base64;
+          // Final image
+          if (enhancementResult.enhanced_image_base64) {
+            let imgData = enhancementResult.enhanced_image_base64;
             if (!imgData.startsWith('data:')) {
               imgData = 'data:image/jpeg;base64,' + imgData;
             }
             document.getElementById('enhancedImage').src = imgData;
-          } else {
-            enhancedBox.classList.add('hidden');
           }
           
-          // Iterations
-          expertCard.classList.remove('hidden');
-          const iterContainer = document.getElementById('iterationsContainer');
+          // Final AI level
+          const finalLevel = data.realism_score?.ai_score_level || 'unknown';
+          const finalLevelName = AI_LEVEL_NAMES[finalLevel] || finalLevel;
+          document.getElementById('finalLikelihood').innerHTML = `
+            <span class="ai-level ${finalLevel}">${finalLevelName}</span>
+          `;
           
-          if (ee.iterations && ee.iterations.length > 0) {
-            iterContainer.innerHTML = ee.iterations.map(it => {
-              const improvement = it.ai_likelihood_before - it.ai_likelihood_after;
-              const improvementClass = improvement > 0 ? 'improved' : 'same';
-              const improvementText = improvement > 0 
-                ? `↓ ${(improvement * 100).toFixed(1)}%` 
-                : '无变化';
-              
-              const agentResults = it.agent_results.map(ar => {
-                // Render prompt if available
-                const p = ar.prompt_used;
-                const promptHtml = p ? `
-                  <div class="prompt-box">
-                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                      <span style="color: #f9fafb; font-weight: 500;">📝 修图提示词</span>
-                      <span class="prompt-intensity ${p.intensity}">${p.intensity === 'light' ? '轻度' : p.intensity === 'medium' ? '中度' : '强度'}</span>
-                      ${p.expression_mode ? `<span class="expression-badge ${p.expression_mode}">${p.expression_mode === 'preserve' ? '🔒 表情保留' : '🔧 表情修正'}</span>` : ''}
-                      ${p.denoising_strength ? `<span style="color: #a78bfa; font-size: 11px;">降噪: ${p.denoising_strength}</span>` : ''}
-                    </div>
-                    ${p.preservation_prompt ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">🔒 保留约束 (Preservation)</div>
-                        <div class="prompt-preservation">${p.preservation_prompt}</div>
-                      </div>
-                    ` : ''}
-                    ${p.correction_prompt && p.expression_mode === 'correct' ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">🔧 修正指导 (Correction)</div>
-                        <div class="prompt-correction">${p.correction_prompt}</div>
-                      </div>
-                    ` : ''}
-                    <div class="prompt-section">
-                      <div class="prompt-label">✅ 正向提示词 (Positive)</div>
-                      <div class="prompt-positive">${p.positive_prompt || '无'}</div>
-                    </div>
-                    <div class="prompt-section">
-                      <div class="prompt-label">❌ 负向提示词 (Negative)</div>
-                      <div class="prompt-negative">${p.negative_prompt || '无'}</div>
-                    </div>
-                    ${p.specific_instructions && p.specific_instructions.length > 0 ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">📋 具体指令</div>
-                        <div class="prompt-instructions">${p.specific_instructions.join(' | ')}</div>
-                      </div>
-                    ` : ''}
-                    ${p.target_areas && p.target_areas.length > 0 ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">🎯 目标区域</div>
-                        <div class="prompt-areas">${p.target_areas.join(', ')}</div>
-                      </div>
-                    ` : ''}
-                    ${p.expression_type && p.expression_type !== 'neutral' ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">😊 表情类型</div>
-                        <span class="expression-type">${EXPRESSION_TYPES[p.expression_type] || p.expression_type}</span>
-                      </div>
-                    ` : ''}
-                    ${p.expression_issues && p.expression_issues.length > 0 ? `
-                      <div class="prompt-section">
-                        <div class="prompt-label">⚠️ 表情问题</div>
-                        <ul style="margin: 4px 0 0 16px; padding: 0; color: #fbbf24;">
-                          ${p.expression_issues.map(i => `<li style="font-size: 11px;">${i}</li>`).join('')}
-                        </ul>
-                      </div>
-                    ` : ''}
-                  </div>
-                ` : '';
-                
-                return `
-                  <div class="agent-result">
-                    <div class="agent-header">
-                      <div class="agent-icon ${ar.agent_type}">${AGENT_ICONS[ar.agent_type] || '🔧'}</div>
-                      <span class="agent-name">${AGENT_NAMES[ar.agent_type] || ar.agent_type}</span>
-                      <span class="tag ${ar.success ? 'tag-low' : 'tag-high'}" style="margin-left: auto;">
-                        ${ar.success ? '✓ 成功' : '✗ 失败'}
-                      </span>
-                    </div>
-                    <div style="font-size: 13px; color: #666;">${ar.description}</div>
-                    ${ar.changes_made && ar.changes_made.length > 0 ? `
-                      <ul class="agent-changes">
-                        ${ar.changes_made.map(c => `<li>${c}</li>`).join('')}
-                      </ul>
-                    ` : ''}
-                    ${promptHtml}
-                  </div>
-                `;
-              }).join('');
-              
-              return `
-                <div class="iteration-card">
-                  <div class="iteration-header">
-                    <span class="iteration-number">第 ${it.iteration} 轮迭代</span>
-                    <span class="iteration-likelihood">
-                      AI痕迹: ${(it.ai_likelihood_before * 100).toFixed(0)}% → ${(it.ai_likelihood_after * 100).toFixed(0)}%
-                      <span class="likelihood-change ${improvementClass}">(${improvementText})</span>
-                    </span>
-                  </div>
-                  <div style="font-size: 13px; color: #666; margin-bottom: 12px;">
-                    <strong>路由决策：</strong>${it.routing_reasoning}
-                  </div>
-                  <div>
-                    <strong>调用专家：</strong>
-                    ${it.agents_invoked.map(a => `<span class="tag tag-agent">${AGENT_ICONS[a] || ''} ${AGENT_NAMES[a] || a}</span>`).join('')}
-                  </div>
-                  ${agentResults}
+          // Summary
+          const iterations = data.realism_score?.iterations || 0;
+          const stoppedReason = data.realism_score?.stopped_reason || '处理完成';
+          document.getElementById('summaryText').innerHTML = `
+            <p><strong>迭代次数：</strong>${iterations}轮</p>
+            <p><strong>停止原因：</strong>${stoppedReason}</p>
+            <p><strong>AI等级：</strong>${finalLevelName} → ${finalLevelName}</p>
+          `;
+          
+          // Show iterations if available
+          if (data.realism_score?.iterations_data && data.realism_score.iterations_data.length > 0) {
+            expertCard.classList.remove('hidden');
+            const iterContainer = document.getElementById('iterationsContainer');
+            iterContainer.innerHTML = data.realism_score.iterations_data.map(it => `
+              <div class="iteration-card">
+                <div class="iteration-header">
+                  <span class="iteration-number">第 ${it.iteration} 轮迭代</span>
+                  <span class="iteration-likelihood">
+                    AI等级: ${AI_LEVEL_NAMES[it.ai_score_level_before] || it.ai_score_level_before} → 
+                    ${AI_LEVEL_NAMES[it.ai_score_level_after] || it.ai_score_level_after}
+                  </span>
                 </div>
-              `;
-            }).join('');
+                <div style="font-size: 13px; color: #666; margin-bottom: 12px;">
+                  <strong>策略目标：</strong>${it.strategy_goal || '优化图像真实感'}
+                </div>
+              </div>
+            `).join('');
+          } else {
+            expertCard.classList.add('hidden');
+          }
+        } else if (expertEnhancement && showEnhanced) {
+          // Expert system result (legacy)
+          summaryCard.classList.remove('hidden');
+          enhancedBox.classList.remove('hidden');
+          expertCard.classList.remove('hidden');
+          
+          let summaryHtml = expertEnhancement.summary;
+          if (expertEnhancement.expression_type && expertEnhancement.expression_type !== 'neutral') {
+            const expType = EXPRESSION_TYPES[expertEnhancement.expression_type] || expertEnhancement.expression_type;
+            const expMode = expertEnhancement.expression_mode === 'preserve' ? '保留' : '修正';
+            summaryHtml += ` <span class="expression-badge ${expertEnhancement.expression_mode}">${expType}(${expMode})</span>`;
+          }
+          document.getElementById('summaryText').innerHTML = summaryHtml;
+          
+          if (expertEnhancement.enhanced_image_base64) {
+            let imgData = expertEnhancement.enhanced_image_base64;
+            if (!imgData.startsWith('data:')) {
+              imgData = 'data:image/jpeg;base64,' + imgData;
+            }
+            document.getElementById('enhancedImage').src = imgData;
+          }
+          
+          const finalLevel = data.realism_score?.ai_score_level || 'unknown';
+          document.getElementById('finalLikelihood').innerHTML = `
+            <span class="ai-level ${finalLevel}">${AI_LEVEL_NAMES[finalLevel] || finalLevel}</span>
+          `;
+          
+          // Iterations display
+          const iterContainer = document.getElementById('iterationsContainer');
+          if (expertEnhancement.iterations && expertEnhancement.iterations.length > 0) {
+            iterContainer.innerHTML = expertEnhancement.iterations.map(it => `
+              <div class="iteration-card">
+                <div class="iteration-header">
+                  <span class="iteration-number">第 ${it.iteration} 轮迭代</span>
+                  <span class="iteration-likelihood">
+                    AI痕迹: ${(it.ai_likelihood_before * 100).toFixed(0)}% → ${(it.ai_likelihood_after * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            `).join('');
           } else {
             iterContainer.innerHTML = '<div style="color: #666; padding: 12px;">AI痕迹较低，无需迭代优化</div>';
           }
-          
         } else {
+          // No enhancement
           summaryCard.classList.add('hidden');
           expertCard.classList.add('hidden');
           enhancedBox.classList.add('hidden');
-          document.getElementById('finalLikelihood').textContent = '-';
+          const finalLevel = data.realism_score?.ai_score_level || 'unknown';
+          document.getElementById('finalLikelihood').innerHTML = `
+            <span class="ai-level ${finalLevel}">${AI_LEVEL_NAMES[finalLevel] || finalLevel}</span>
+          `;
         }
         
         // Raw JSON

@@ -1,7 +1,7 @@
 """Stage 2: Fake Signal Detector - Identifies AI-generated artifacts in images."""
 
 from dataclasses import dataclass, field
-from app.models.schemas import FakeSignal, Severity
+from app.models.schemas import FakeSignal, Severity, DimensionSignals
 from app.services.llm_client import get_llm_client
 
 SYSTEM_PROMPT = """You are an expert at detecting AI-generated image artifacts.
@@ -87,51 +87,51 @@ EXPRESSION_DETECTION_PROMPT = """分析这张图像中的面部表情（如果�
 
 DETECTION_PROMPT = """Analyze this image for signs of AI generation or digital manipulation.
 
-Focus on detecting these common AI artifacts:
+Focus on detecting these common AI artifacts by dimension:
 
-1. OVER-UNIFORMITY
-   - Unnaturally smooth textures (skin, surfaces, backgrounds)
-   - Missing micro-variations in natural materials
-   - Too-perfect gradients
+【SKIN - 皮肤】
+- Unnaturally smooth or plastic-looking skin
+- Missing pores and skin texture details
+- Airbrushed or overly perfect complexion
+- Inconsistent skin texture between regions
 
-2. EXCESSIVE SYMMETRY
-   - Unnatural bilateral symmetry in faces or objects
-   - Repeated patterns that are too regular
-   - Mirror-like precision in asymmetric subjects
+【LIGHTING - 光线】
+- Inconsistent light direction between subjects
+- Missing or incorrect shadows
+- Unnatural highlights or reflections
+- Physically impossible light behavior
 
-3. OVER-CLEAN EDGES
-   - Unnaturally sharp or smooth boundaries
-   - Missing natural edge irregularities
-   - Perfect cutouts without environmental interaction
+【TEXTURE - 纹理】
+- Over-uniform textures on surfaces
+- Missing micro-variations in materials
+- Too-perfect gradients
+- Repetitive texture patterns
 
-4. UNREALISTIC LIGHTING
-   - Inconsistent light direction
-   - Missing or incorrect shadows
-   - Unnatural highlights or reflections
-   - Physically impossible light behavior
+【GEOMETRY - 几何（包括表情）】
+- Extra or missing fingers
+- Distorted anatomy or proportions
+- Impossible poses or perspectives
+- Facial asymmetry (if portrait)
+- Expression issues: unnatural smile, missing crow's feet, etc.
 
-5. MISSING PHYSICAL RANDOMNESS
-   - Lack of natural imperfections
-   - Missing wear, dust, or environmental effects
-   - Too-perfect material properties
-
-6. OTHER ARTIFACTS
-   - Warped or impossible geometry
-   - Text/numbers rendering issues
-   - Unnatural color transitions
-   - Missing or extra fingers/limbs (for portraits)
+【COLOR - 色彩】
+- Oversaturated or unnatural colors
+- HDR-like appearance
+- Inconsistent color temperature
+- Unnatural color transitions
 
 For each issue found, rate its severity:
 - "low": Minor issue, barely noticeable
 - "medium": Noticeable upon inspection
 - "high": Obviously artificial, immediately visible
 
-Return your analysis as JSON in this exact format:
+Return your analysis as JSON with dimension-tagged signals:
 {
   "fake_signals": [
     {
-      "signal": "<description of the specific issue detected>",
-      "severity": "low" | "medium" | "high"
+      "signal": "<description of the specific issue>",
+      "severity": "low" | "medium" | "high",
+      "dimension": "skin" | "lighting" | "texture" | "geometry" | "color"
     }
   ]
 }
@@ -155,7 +155,7 @@ class FakeSignalDetector:
             image_base64: Base64-encoded image data
 
         Returns:
-            List of detected FakeSignal objects
+            List of detected FakeSignal objects with dimension tags
         """
         response = await self.llm_client.chat_completion_with_image(
             prompt=DETECTION_PROMPT,
@@ -176,12 +176,44 @@ class FakeSignalDetector:
             except ValueError:
                 severity = Severity.LOW
 
+            dimension = item.get("dimension", "general").lower()
+            valid_dimensions = ["skin", "lighting", "texture", "geometry", "color"]
+            if dimension not in valid_dimensions:
+                dimension = "general"
+
             signals.append(FakeSignal(
                 signal=item.get("signal", ""),
                 severity=severity,
+                dimension=dimension,
             ))
 
         return signals
+
+    def categorize_by_dimension(self, signals: list[FakeSignal]) -> DimensionSignals:
+        """
+        Categorize fake signals by dimension.
+
+        Args:
+            signals: List of fake signals
+
+        Returns:
+            DimensionSignals with signals grouped by dimension
+        """
+        result = DimensionSignals()
+        for signal in signals:
+            if signal.dimension == "skin":
+                result.skin.append(signal)
+            elif signal.dimension == "lighting":
+                result.lighting.append(signal)
+            elif signal.dimension == "texture":
+                result.texture.append(signal)
+            elif signal.dimension == "geometry":
+                result.geometry.append(signal)
+            elif signal.dimension == "color":
+                result.color.append(signal)
+            else:
+                result.general.append(signal)
+        return result
 
     async def detect_expression(self, image_base64: str) -> ExpressionAnalysis:
         """

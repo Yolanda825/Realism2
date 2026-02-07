@@ -12,6 +12,15 @@ class Severity(str, Enum):
     HIGH = "high"
 
 
+class AIConfidenceLevel(str, Enum):
+    """AI confidence levels for scoring (5-level system)."""
+    VERY_LOW = "very_low"   # 几乎无AI痕迹
+    LOW = "low"              # 轻微AI痕迹
+    MEDIUM = "medium"        # 中等AI痕迹
+    HIGH = "high"            # 明显AI痕迹
+    VERY_HIGH = "very_high"  # 严重AI痕迹
+
+
 class Priority(str, Enum):
     """Priority levels for enhancement strategy."""
     VERY_LOW = "very_low"
@@ -97,11 +106,22 @@ class FakeSignal(BaseModel):
     """A single fake signal detected in the image."""
     signal: str = Field(..., description="Description of the detected fake signal")
     severity: Severity = Field(..., description="Severity level of the signal")
+    dimension: str = Field(default="general", description="Dimension: skin/lighting/texture/geometry/color/general")
 
 
 class FakeSignalList(BaseModel):
     """Container for fake signals."""
     fake_signals: list[FakeSignal] = Field(default_factory=list)
+
+
+class DimensionSignals(BaseModel):
+    """Fake signals grouped by dimension."""
+    skin: list[FakeSignal] = Field(default_factory=list, description="Skin-related artifacts")
+    lighting: list[FakeSignal] = Field(default_factory=list, description="Lighting artifacts")
+    texture: list[FakeSignal] = Field(default_factory=list, description="Texture artifacts")
+    geometry: list[FakeSignal] = Field(default_factory=list, description="Geometry/anatomy artifacts (includes expression)")
+    color: list[FakeSignal] = Field(default_factory=list, description="Color artifacts")
+    general: list[FakeSignal] = Field(default_factory=list, description="General artifacts")
 
 
 # Stage 3: RAG - Realism Constraints
@@ -178,6 +198,14 @@ class RealismScore(BaseModel):
         ge=0.0,
         le=1.0,
         description="Estimated realism score after enhancement"
+    )
+    ai_score_level: AIConfidenceLevel = Field(
+        ...,
+        description="AI confidence level: very_low/low/medium/high/very_high"
+    )
+    ai_score_level_description: str = Field(
+        default="",
+        description="Human-readable description of the AI score level"
     )
     confidence: float = Field(
         ...,
@@ -263,6 +291,7 @@ class EnhancementResult(BaseModel):
 class PipelineResult(BaseModel):
     """Final output combining all pipeline stages."""
     scene_classification: SceneClassification
+    dimension_signals: DimensionSignals = Field(default_factory=dict, description="Fake signals grouped by dimension")
     fake_signals: list[FakeSignal]
     realism_constraints: RealismConstraints
     strategy: Strategy
