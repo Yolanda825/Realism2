@@ -3,14 +3,12 @@
 import json
 import asyncio
 import base64
-import time
 import uuid
 from typing import Optional, TYPE_CHECKING
 import httpx
 
 from app.config import get_settings
 from app.models.schemas import ModelRouting, EnhancementResult
-from app.services.llm_client import get_llm_client
 
 # Try to import MHC SDK
 try:
@@ -30,10 +28,9 @@ class ImageModelClient:
     def __init__(self):
         """Initialize the image model client."""
         settings = get_settings()
-        self.endpoint = settings.image_model_endpoint
-        self.llm_base_url = settings.llm_base_url
-        self.llm_api_key = settings.llm_api_key
         self.client = httpx.AsyncClient(timeout=120.0)
+        # Store last nano/MHC raw results for debugging
+        self._last_mhc: dict = {}
         
         # MHC API configuration
         self.mhc_app = settings.mhc_app
@@ -54,9 +51,14 @@ class ImageModelClient:
                     env=self.mhc_env
                 )
             except Exception as e:
-                print(f"Warning: Failed to initialize MHC client: {e}")
+                print(f"[ImageModelClient] Warning: Failed to initialize MHC client: {e}")
                 self.mhc_client = None
-    
+        
+        if self.mhc_client:
+            print("[ImageModelClient] MHC client initialized successfully")
+        else:
+            print("[ImageModelClient] MHC client not available - enhancement will fail until configured")
+     
     def compose_prompt_from_agent(self, agent_prompt: "AgentPrompt") -> tuple[str, str, float]:
         """
         Compose the final prompt from an AgentPrompt with preservation/correction logic.
@@ -153,15 +155,10 @@ class ImageModelClient:
         expression_mode: str = "preserve",
     ) -> EnhancementResult:
         """
-        Execute image enhancement using the specified model.
-
-        Supports multiple backends:
-        1. Direct image model endpoint (if configured)
-        2. LLM-based image editing (using vision model)
-        3. Mock mode for testing
+        Execute image enhancement using MHC API.
 
         Args:
-            image_base64: Base64-encoded source image
+            image_base64: Base64-encoded image data
             model_routing: Model routing with prompt and parameters
             preservation_prompt: Optional preservation constraints (identity, expression)
             correction_prompt: Optional correction guidance (for expression correction)
@@ -170,6 +167,23 @@ class ImageModelClient:
         Returns:
             EnhancementResult with enhanced image or error
         """
+        # Check MHC client availability
+        if not self.mhc_client:
+            return EnhancementResult(
+                success=False,
+                enhanced_image_base64=None,
+                error_message="MHC 客户端未初始化。请在 .env 中配置 MHC_APP, MHC_BIZ, MHC_NANO_TOKEN",
+                debug_mhc=None,
+            )
+        
+        if not self.mhc_nano_token:
+            return EnhancementResult(
+                success=False,
+                enhanced_image_base64=None,
+                error_message="MHC_NANO_TOKEN 未配置。请联系元建获取 Token，并在 .env 中配置",
+                debug_mhc=None,
+            )
+        
         # Compose prompts with preservation/correction
         final_positive, final_negative = self.compose_prompt_for_model_routing(
             model_routing,
@@ -188,31 +202,8 @@ class ImageModelClient:
             reasoning=model_routing.reasoning,
         )
         
-        # Try different enhancement methods in order
-        
-        # Method 1: Use MHC API if available
-        if self.mhc_client:
-            result = await self._call_mhc_api(image_base64, composed_routing)
-            if result.success:
-                return result
-        
-        # Method 2: Use dedicated image model endpoint if configured (SD API style)
-        if self.endpoint:
-            result = await self._call_image_endpoint(image_base64, composed_routing)
-            if result.success:
-                return result
-
-        # Method 3: Use LLM with image editing capability
-        result = await self._call_llm_image_edit(image_base64, composed_routing)
-        if result.success:
-            return result
-
-        # Method 4: Return original with note (fallback)
-        return EnhancementResult(
-            success=True,
-            enhanced_image_base64=image_base64,  # Return original
-            error_message="图像增强模型未配置，返回原图。请配置 MHC API 或 IMAGE_MODEL_ENDPOINT 以启用增强功能。",
-        )
+        # Call MHC API
+        return await self._call_mhc_api(image_base64, composed_routing)
     
     async def execute_with_agent_prompt(
         self,
@@ -232,6 +223,23 @@ class ImageModelClient:
         Returns:
             EnhancementResult with enhanced image or error
         """
+        # Check MHC client availability
+        if not self.mhc_client:
+            return EnhancementResult(
+                success=False,
+                enhanced_image_base64=None,
+                error_message="MHC 客户端未初始化。请在 .env 中配置 MHC_APP, MHC_BIZ, MHC_NANO_TOKEN",
+                debug_mhc=None,
+            )
+        
+        if not self.mhc_nano_token:
+            return EnhancementResult(
+                success=False,
+                enhanced_image_base64=None,
+                error_message="MHC_NANO_TOKEN 未配置",
+                debug_mhc=None,
+            )
+        
         # Compose prompts
         final_positive, final_negative, denoising = self.compose_prompt_from_agent(agent_prompt)
         
@@ -251,90 +259,89 @@ class ImageModelClient:
             reasoning=f"Agent: {agent_prompt.agent_type.value}, Mode: {agent_prompt.expression_mode}",
         )
         
-        # Try enhancement methods
-        
-        # Method 1: MHC API
-        if self.mhc_client:
-            result = await self._call_mhc_api(image_base64, model_routing)
-            if result.success:
-                return result
-        
-        # Method 2: SD API
-        if self.endpoint:
-            result = await self._call_image_endpoint(image_base64, model_routing)
-            if result.success:
-                return result
-        
-        # Method 3: LLM
-        result = await self._call_llm_image_edit(image_base64, model_routing)
-        if result.success:
-            return result
-        
-        return EnhancementResult(
-            success=True,
-            enhanced_image_base64=image_base64,
-            error_message="图像增强模型未配置，返回原图。",
-        )
+        # Call MHC API
+        return await self._call_mhc_api(image_base64, model_routing)
 
     async def _call_mhc_api(
         self,
         image_base64: str,
         model_routing: ModelRouting,
     ) -> EnhancementResult:
-        """
-        Call MHC image-to-image API（与 test_minimal.py 一致：runAsync + queryResult）.
+        """Call MHC image-to-image API
 
         使用 lib.ai.api.AiApi.runAsync 提交异步任务，再用 queryResult 轮询结果；
         参数采用外采改图接口：app_scene=go, path_scene=imgEdit, model=gemini-3-pro-image-preview 等。
         """
-        if not self.mhc_client:
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message="MHC API 客户端未初始化",
-            )
-        if not self.mhc_nano_token:
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message="未配置 MHC_NANO_TOKEN（外采改图权限 Token，联系元建获取）",
-            )
-
         try:
-            # 与 test_minimal 一致的 parameter 结构（外采 image-to-image 接口）
+            # Base parameter payload; will augment with inlineData
             params = {
                 "parameter": {
                     "app_scene": "go",
-                    "aspect_ratio": "1:1",
-                    "expire_queue_time": 1200,
                     "model": "gemini-3-pro-image-preview",
                     "path_scene": "imgEdit",
-                    "prompt": model_routing.prompt or "",
+                    "prompt": model_routing.prompt,
                     "resolution": "2K",
-                    "rsp_media_type": "url",
                     "token": self.mhc_nano_token,
                     "trace_id": str(uuid.uuid4()),
                 }
             }
 
-            # 输入图：与 test_minimal 一致 [{"url": image_url}]
-            if not image_base64.startswith("data:"):
-                image_url = f"data:image/jpeg;base64,{image_base64}"
-            else:
+            # Prepare image payloads: prefer public URL for init_images, and include inlineData for providers requiring it
+            image_url = None
+            mime_type = "image/jpeg"
+            if image_base64.startswith("http://") or image_base64.startswith("https://"):
                 image_url = image_base64
+            elif image_base64.startswith("data:"):
+                try:
+                    header, b64data = image_base64.split(",", 1)
+                    # e.g., data:image/png;base64,
+                    if ";" in header and header.startswith("data:"):
+                        mime_part = header.split(":", 1)[1].split(";", 1)[0]
+                        mime_type = mime_part or mime_type
+                    image_base64 = b64data
+                except Exception:
+                    pass
+            else:
+                # Raw base64 input; keep default mime_type
+                pass
 
+            # Inject inlineData into parameter
+            params["parameter"]["image"] = {
+                "inlineData": {
+                    "mimeType": mime_type,
+                    "data": image_base64,
+                }
+            }
+
+            # 从 settings 读取 apipath
+            apiPath = self.mhc_api_path
+
+            print("[MHC] Submitting image enhancement task...")
             loop = asyncio.get_event_loop()
+            # Build init_images: prefer public URL; otherwise provide inlineData
+            init_images = None
+            if image_url:
+                init_images = [{"url": image_url}]
+            else:
+                init_images = [{"inlineData": {"mimeType": mime_type, "data": image_base64}}]
+
             task_result = await loop.run_in_executor(
                 None,
                 lambda: self.mhc_client.runAsync(
-                    [{"url": image_url}],
+                    init_images,
                     params,
-                    self.mhc_api_path,
+                    apiPath,
                     "mtlab",
                 ),
             )
+            # Debug: record and print submit response
+            self._last_mhc = {"submit": task_result}
+            try:
+                print("[MHC] submit response:", json.dumps(task_result, ensure_ascii=False)[:800])
+            except Exception:
+                print("[MHC] submit response (non-serializable)")
 
-            # 与 test_minimal 一致：从 data.result 取 task_id，再 queryResult
+            # 从 data.result 取 task_id，再 queryResult
             data = task_result.get("data") or {}
             result_inner = data.get("result") or {}
             task_id = result_inner.get("id") or task_result.get("msg_id")
@@ -342,12 +349,15 @@ class ImageModelClient:
                 return EnhancementResult(
                     success=False,
                     enhanced_image_base64=None,
-                    error_message=f"MHC API 任务提交失败，无 task_id: {json.dumps(task_result)[:500]}",
+                    error_message=f"MHC API 任务提交失败，无 task_id: {json.dumps(task_result, ensure_ascii=False)[:500]}",
+                    debug_mhc=self._last_mhc,
                 )
 
+            print(f"[MHC] Task submitted successfully, task_id: {task_id}")
+            
             # 轮询结果（与 test_minimal 一致：queryResult 返回 { is_finished, result }，result 为完整响应）
-            max_attempts = 30
-            for _ in range(max_attempts):
+            max_attempts = 150  # ~5 minutes at 2s interval to allow external processing
+            for attempt in range(max_attempts):
                 await asyncio.sleep(2)
                 raw = await loop.run_in_executor(
                     None,
@@ -360,7 +370,15 @@ class ImageModelClient:
                 data = task_result.get("data") if isinstance(task_result, dict) else {}
                 status = data.get("status")
 
+                print(f"[MHC] Polling attempt {attempt + 1}/{max_attempts}, status: {status}")
+
                 if status == 10 or status == 2 or status == 20:
+                    # Debug: record and print final response
+                    self._last_mhc["final"] = raw
+                    try:
+                        print("[MHC] final response:", json.dumps(raw, ensure_ascii=False)[:1200])
+                    except Exception:
+                        print("[MHC] final response (non-serializable)")
                     output = data.get("output") or data.get("result") or data
                     enhanced_image = None
                     if isinstance(output, dict):
@@ -370,6 +388,20 @@ class ImageModelClient:
                             or output.get("image")
                             or output.get("result_image")
                         )
+                        # Try top-level 'urls' array
+                        if not enhanced_image:
+                            urls = output.get("urls") or output.get("images") or []
+                            if isinstance(urls, list) and urls:
+                                enhanced_image = await self._download_image_as_base64(urls[0])
+                        # Try nested media_info_list under 'data'
+                        if not enhanced_image:
+                            inner_data = output.get("data") or {}
+                            media_list = inner_data.get("media_info_list") or []
+                            if isinstance(media_list, list) and media_list:
+                                url = media_list[0].get("media_data") or media_list[0].get("url") or media_list[0].get("image_url")
+                                if url:
+                                    enhanced_image = await self._download_image_as_base64(url)
+                        # Single 'url' field
                         if not enhanced_image and output.get("url"):
                             enhanced_image = await self._download_image_as_base64(output["url"])
                     elif isinstance(output, str):
@@ -380,34 +412,45 @@ class ImageModelClient:
                     if enhanced_image:
                         if "base64," in str(enhanced_image):
                             enhanced_image = str(enhanced_image).split("base64,")[-1]
+                        print(f"[MHC] enhanced image base64 length: {len(enhanced_image)}")
                         return EnhancementResult(
                             success=True,
                             enhanced_image_base64=enhanced_image,
                             error_message=None,
+                            debug_mhc=self._last_mhc,
                         )
+                    msg = (task_result.get("message") or data.get("error_msg") or data.get("msg") or "未知错误")
                     return EnhancementResult(
                         success=False,
                         enhanced_image_base64=None,
-                        error_message=f"MHC API 返回格式未知: {json.dumps(raw)[:500]}",
+                        error_message=f"MHC API 返回格式未知/无输出: {msg}",
+                        debug_mhc=self._last_mhc,
                     )
                 if status in ("failed", "error") or (isinstance(status, int) and status not in (0, 1, 9)):
-                    err = data.get("error") or data.get("message") or "未知错误"
+                    err = data.get("error") or data.get("error_msg") or task_result.get("message") or "未知错误"
+                    self._last_mhc["final"] = raw
+                    print(f"[MHC] task failed: {err}")
                     return EnhancementResult(
                         success=False,
                         enhanced_image_base64=None,
                         error_message=f"MHC API 任务失败: {err}",
+                        debug_mhc=self._last_mhc,
                     )
 
             return EnhancementResult(
                 success=False,
                 enhanced_image_base64=None,
                 error_message="MHC API 任务超时（60秒）",
+                debug_mhc=self._last_mhc,
             )
         except Exception as e:
+            self._last_mhc["error"] = str(e)
+            print(f"[MHC] exception: {str(e)}")
             return EnhancementResult(
                 success=False,
                 enhanced_image_base64=None,
                 error_message=f"MHC API 调用失败: {str(e)}",
+                debug_mhc=self._last_mhc,
             )
     
     async def _download_image_as_base64(self, url: str) -> Optional[str]:
@@ -416,103 +459,17 @@ class ImageModelClient:
             response = await self.client.get(url, timeout=30.0)
             response.raise_for_status()
             return base64.b64encode(response.content).decode("utf-8")
-        except Exception:
+        except Exception as e:
+            print(f"[MHC] Failed to download image from {url}: {e}")
             return None
-
-    async def _call_image_endpoint(
-        self,
-        image_base64: str,
-        model_routing: ModelRouting,
-    ) -> EnhancementResult:
-        """Call dedicated image enhancement endpoint (SD API style)."""
-        try:
-            payload = {
-                "init_images": [f"data:image/jpeg;base64,{image_base64}"],
-                "prompt": model_routing.prompt,
-                "negative_prompt": model_routing.negative_prompt,
-                "denoising_strength": model_routing.parameters.get("denoising_strength", 0.25),
-                "steps": model_routing.parameters.get("steps", 20),
-                "cfg_scale": model_routing.parameters.get("cfg_scale", 7.0),
-                "sampler_name": model_routing.parameters.get("sampler", "DPM++ 2M Karras"),
-                "seed": model_routing.parameters.get("seed", -1),
-            }
-
-            response = await self.client.post(
-                f"{self.endpoint}/sdapi/v1/img2img",
-                json=payload,
-                timeout=180.0,
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            if "images" in result and result["images"]:
-                return EnhancementResult(
-                    success=True,
-                    enhanced_image_base64=result["images"][0],
-                    error_message=None,
-                )
-            else:
-                return EnhancementResult(
-                    success=False,
-                    enhanced_image_base64=None,
-                    error_message="图像增强API未返回结果",
-                )
-
-        except httpx.TimeoutException:
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message="图像增强请求超时",
-            )
-        except Exception as e:
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message=f"图像增强失败: {str(e)}",
-            )
-
-    async def _call_llm_image_edit(
-        self,
-        image_base64: str,
-        model_routing: ModelRouting,
-    ) -> EnhancementResult:
-        """
-        Use LLM with image generation capability for enhancement.
-        
-        This attempts to use models that support image generation/editing.
-        """
-        try:
-            llm_client = get_llm_client()
-            
-            # Check if we have a valid API key
-            if llm_client.mock_mode:
-                return EnhancementResult(
-                    success=False,
-                    enhanced_image_base64=None,
-                    error_message="LLM API未配置有效密钥",
-                )
-
-            # Try calling image generation endpoint if available
-            # This is a placeholder - actual implementation depends on
-            # what image generation APIs are available on the model router
-            
-            # For now, return failure to fall back to original image
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message="当前LLM不支持图像生成",
-            )
-
-        except Exception as e:
-            return EnhancementResult(
-                success=False,
-                enhanced_image_base64=None,
-                error_message=f"LLM图像编辑失败: {str(e)}",
-            )
 
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
+
+    # Debug helper
+    def get_last_mhc_debug(self) -> dict:
+        return self._last_mhc
 
 
 # Global client instance

@@ -28,6 +28,7 @@ from app.agents.enhancement_orchestrator import (
     EnhancementOrchestratorResult,
 )
 from app.services.image_model import get_image_model_client
+import json
 
 MAX_ITERATIONS = 3
 STOP_LEVELS = [AIConfidenceLevel.VERY_LOW, AIConfidenceLevel.LOW, AIConfidenceLevel.MEDIUM]
@@ -115,37 +116,24 @@ class PipelineOrchestrator:
         final_score = realism_score
 
         if enhance_image:
-            if use_expert_system:
-                # Use expert agent system
-                expert_result = await self.expert_orchestrator.enhance(
-                    image_base64=image_base64,
-                    scene_type=scene_classification.primary_scene,
-                    initial_ai_likelihood=scene_classification.ai_likelihood,
-                    initial_fake_signals=fake_signals,
-                )
-                expert_enhancement = self._convert_expert_result(expert_result)
-                enhancement_result = EnhancementResult(
-                    success=expert_result.success,
-                    enhanced_image_base64=expert_result.enhanced_image_base64,
-                    error_message=None if expert_result.success else "Enhancement failed",
-                )
-                final_image = expert_result.enhanced_image_base64
-            else:
-                # Simplified flow: strategy -> image model -> iteration
-                result = await self._simple_iterate(
-                    image_base64=image_base64,
-                    scene_classification=scene_classification,
-                    fake_signals=fake_signals,
-                    dimension_signals=dimension_signals,
-                    realism_constraints=realism_constraints,
-                )
-                enhancement_result = EnhancementResult(
-                    success=result["success"],
-                    enhanced_image_base64=result["enhanced_image"],
-                    error_message=result.get("error"),
-                )
-                final_image = result["enhanced_image"]
-                final_score = result["final_score"]
+            # Further simplified path: single-shot enhancement via image model only; if failure, do NOT return original image
+            model_routing = self.prompt_generator.generate_routing(
+                scene_classification=scene_classification,
+                fake_signals=fake_signals,
+                strategy=strategy,
+                execution_plan=execution_plan,
+            )
+            er = await self.image_model_client.execute_enhancement(
+                image_base64=image_base64,
+                model_routing=model_routing,
+            )
+            enhancement_result = EnhancementResult(
+                success=er.success,
+                enhanced_image_base64=er.enhanced_image_base64,
+                error_message=er.error_message,
+                debug_mhc=er.debug_mhc,
+            )
+            final_image = er.enhanced_image_base64 if er.success else None
 
         return PipelineResult(
             scene_classification=scene_classification,
@@ -260,6 +248,15 @@ class PipelineOrchestrator:
                 image_base64=current_image,
                 model_routing=model_routing,
             )
+            # Debug: print whether MHC/Nano was used and last raw responses
+            try:
+                from app.services.image_model import get_image_model_client
+                dbg_client = get_image_model_client()
+                last = dbg_client.get_last_mhc_debug()
+                if last:
+                    print("[Pipeline] MHC/Nano last responses:", json.dumps({k: (v if isinstance(v, (str,int,float)) else '...') for k,v in last.items()}))
+            except Exception:
+                pass
 
             if not enhancement_result.success:
                 return {
@@ -270,6 +267,7 @@ class PipelineOrchestrator:
                     "stopped_reason": f"Image enhancement failed at iteration {iteration}: {enhancement_result.error_message}",
                     "iterations_data": iterations_data,
                     "error": enhancement_result.error_message,
+                    "debug_mhc": enhancement_result.debug_mhc,
                 }
 
             enhanced_image = enhancement_result.enhanced_image_base64
@@ -292,6 +290,7 @@ class PipelineOrchestrator:
                 "ai_score_level_after": score_after.ai_score_level.value,
                 "strategy_goal": strategy.goal,
                 "model_routing_reasoning": model_routing.reasoning,
+                "debug_mhc": enhancement_result.debug_mhc,
             })
 
             # Update for next iteration
@@ -310,6 +309,7 @@ class PipelineOrchestrator:
                         "iterations": iteration,
                         "stopped_reason": f"AI level improved to {score_after.ai_score_level.value}, stopping iteration",
                         "iterations_data": iterations_data,
+                        "debug_mhc": enhancement_result.debug_mhc,
                     }
             else:
                 # No improvement; allow another round if we haven't reached MAX_ITERATIONS yet
@@ -321,6 +321,7 @@ class PipelineOrchestrator:
                         "iterations": iteration,
                         "stopped_reason": "no_improvement_max_reached",
                         "iterations_data": iterations_data,
+                        "debug_mhc": enhancement_result.debug_mhc,
                     }
 
         # Max iterations reached
@@ -337,6 +338,7 @@ class PipelineOrchestrator:
             "iterations": MAX_ITERATIONS,
             "stopped_reason": f"Reached maximum iterations ({MAX_ITERATIONS})",
             "iterations_data": iterations_data,
+            "debug_mhc": None,
         }
 
     async def analyze_only(self, image_base64: str) -> PipelineResult:

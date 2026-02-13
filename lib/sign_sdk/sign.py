@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import base64
 import datetime
+import os
 import requests
 from urllib.parse import urlparse
 
@@ -86,8 +87,7 @@ class Signer:
         # Convert params to list and sort
         params_array = sorted(list(params.values()))
     
-        ## Todo: secret configuration
-        secret = "aTq3qEh_1ILmsPIt"
+        secret = os.getenv("MHC_SIGN_SECRET", "")
         str_to_hash = path + "".join(params_array) + secret + sig_time
     
         # MD5 hash

@@ -1,7 +1,11 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
+import os
+from pathlib import Path
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.config import get_settings
@@ -23,14 +27,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
+# Build frontend path - go up from app/ to project root, then to frontend/dist
+frontend_path = Path(__file__).parent.parent / "frontend" / "dist"
+
+# Serve static files from React build
+if frontend_path.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_path / "assets")), name="assets")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_frontend():
+        """Serve the React frontend."""
+        index_path = frontend_path / "index.html"
+        if index_path.exists():
+            with open(index_path, "r", encoding="utf-8") as f:
+                return f.read()
+        return HTMLResponse(content="<html><body><h1>Frontend not found</h1></body></html>")
+
+# Include API routes (must be after frontend to not override static file handling)
 app.include_router(router)
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize storage directory on startup."""
-    import os
     os.makedirs(settings.storage_path, exist_ok=True)
 
 

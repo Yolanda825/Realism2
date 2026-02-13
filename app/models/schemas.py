@@ -216,6 +216,13 @@ class RealismScore(BaseModel):
     notes: str = Field(default="", description="Additional notes about the scoring")
 
 
+class PipelineDebug(BaseModel):
+    """Debug information for front-end console and diagnostics."""
+    iterations: int = Field(default=0, description="Total iterations performed")
+    stopped_reason: Optional[str] = Field(default=None, description="Why the loop stopped")
+    iterations_data: list[dict] = Field(default_factory=list, description="Per-iteration debug records")
+
+
 # Agent Prompt (structured prompt for each expert)
 class AgentPromptSchema(BaseModel):
     """Structured prompt for an expert agent."""
@@ -285,6 +292,7 @@ class EnhancementResult(BaseModel):
     success: bool = Field(..., description="Whether enhancement succeeded")
     enhanced_image_base64: Optional[str] = Field(None, description="Base64-encoded enhanced image")
     error_message: Optional[str] = Field(None, description="Error message if failed")
+    debug_mhc: Optional[dict] = Field(None, description="Raw MHC/Nano responses for frontend console")
 
 
 # Final Pipeline Result with Enhanced Image
@@ -297,6 +305,7 @@ class PipelineResult(BaseModel):
     strategy: Strategy
     execution_plan: ExecutionPlan
     realism_score: RealismScore
+    pipeline_debug: Optional[PipelineDebug] = Field(None, description="Debug info for UI console logs")
     # Expert enhancement system results
     expert_enhancement: Optional[ExpertEnhancementResult] = Field(
         None, description="Results from expert enhancement system"

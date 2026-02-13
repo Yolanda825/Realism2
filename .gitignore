@@ -20,6 +20,13 @@ env/
 # Storage
 storage/
 
+# Logs
+.backend.log
+*.log
+
+# Frontend deps (commit source via git add frontend/)
+frontend/node_modules/
+
 # OS
 .DS_Store
 Thumbs.db

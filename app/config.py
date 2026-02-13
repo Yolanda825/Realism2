@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     mhc_region: str = ""
     mhc_env: str = "outer"
     mhc_api_path: str = "v1/outsourcing_gateway_submit_async"
+    mhc_nano_token: str = ""
 
     # Application Settings
     max_image_size: int = 10485760  # 10MB
